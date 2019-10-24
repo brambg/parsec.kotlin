@@ -10,7 +10,7 @@ class T01_MonadParser {
 
     @Test
     fun shouldMappedReturnsParserReturnsAccept() {
-        val parser = returns<Char, Char>('a').map { it -> it == 'a' }
+        val parser = returns<Char, Char>('a').map { it == 'a' }
 
         val result = parser.invoke(givenAReader()).get()
 
