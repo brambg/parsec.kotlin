@@ -19,10 +19,12 @@ plugins {
     id "com.jfrog.bintray" version "1.7.3"
     id 'net.saliman.cobertura' version '2.4.0'
     id 'com.github.kt3k.coveralls' version '2.8.1'
+    id 'maven-publish'
 }
 
 apply plugin: 'kotlin'
 apply plugin: 'jacoco'
+apply plugin: 'maven'
 apply plugin: 'cobertura'
 apply plugin: 'com.github.kt3k.coveralls'
 
@@ -88,5 +90,50 @@ compileKotlin {
 compileTestKotlin {
     kotlinOptions {
         jvmTarget = "1.8"
+    }
+}
+
+//task hello {
+//    println(System.getenv("HI"))
+//}
+//
+//task javahome {
+//    println(System.getenv("JAVA_HOME"))
+//}
+
+publishing {
+    repositories {
+        maven {
+            // change to point to your repo, e.g. http://my.org/repo
+            url = "$buildDir/repo"
+        }
+    }
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = 'lambdada'
+            artifactId = 'parsec'
+            version = '1.0'
+
+            from components.java
+        }
+    }
+}
+
+task deployJar(type: Jar)
+
+configurations {
+    deployerJars
+}
+
+dependencies {
+    deployerJars "org.apache.maven.wagon:wagon-ssh:2.9"
+}
+
+uploadArchives {
+    repositories.mavenDeployer {
+        configuration = configurations.deployerJars
+        repository(url: "scp://n-195-169-89-50.diginfra.net/data/html/repository") {
+            authentication(userName: System.getenv("USER"), privateKey: System.getenv("PRIVATE_KEY"))
+        }
     }
 }
