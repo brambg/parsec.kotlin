@@ -1,7 +1,6 @@
 package lambdada.parsec.parser
 
 import lambdada.parsec.io.Reader
-import lambdada.parsec.utils.Location
 
 //
 // Response data structure for Parser Combinator
@@ -14,11 +13,11 @@ sealed class Response<I, out A>(open val consumed: Boolean) {
     //
 
     data class Accept<I, out A>(val value: A,
-                            val input: Reader<I>,
-                            override val consumed: Boolean) : Response<I, A>(consumed)
+                                val input: Reader<I>,
+                                override val consumed: Boolean) : Response<I, A>(consumed)
 
-    data class Reject<I, out A>(val location: Location,
-                            override val consumed: Boolean) : Response<I, A>(consumed)
+    data class Reject<I, out A>(val parseError: ParseError,
+                                override val consumed: Boolean) : Response<I, A>(consumed)
 
     //
     // Catamorphism

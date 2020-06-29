@@ -61,6 +61,6 @@ val <I, A> Parser<I, A>.rep: Parser<I, List<A>> get() = this then this.optrep ma
 fun <A> eos(): Parser<A, Unit> = {
     when (it.read()) {
         null -> Accept(Unit, it, false)
-        else -> Reject(it.location(), false)
+        else -> Reject(it.location().toError("eos"), false)
     }
 }
