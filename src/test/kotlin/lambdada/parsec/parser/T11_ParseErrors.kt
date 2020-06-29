@@ -1,8 +1,10 @@
 package lambdada.parsec.parser
 
 import lambdada.parsec.io.Reader
+import lambdada.parsec.parser.Response.Accept
 import lambdada.parsec.parser.Response.Reject
 import org.junit.Test
+import kotlin.test.fail
 
 class T11_ParseErrors {
 
@@ -71,8 +73,45 @@ class T11_ParseErrors {
         }
         with(reject.parseError.stack[1]) {
             assert(location.position == 7)
-            assert(message == "fails") // relevant tag
         }
+    }
+
+    @Test
+    fun test_context_sensitive_parsing() {
+        val tagname = scope("tagname", (charIn('a'..'z').optrep))
+        val opentag = scope("openTag", (char('[') then tagname then char('>')))
+        val closetag = scope("closeTag", char('<') then tagname then char(']'))
+        val text = scope("text", not(charIn("[]<>")).optrep)
+        val range = scope("range", opentag then text then closetag)
+
+        assertParses(tagname, "tag")
+        assertParses(opentag, "[tag>")
+        assertParses(closetag, "<tag]")
+        assertParses(text, "Ave! Lorem ipsum dolor pecunia non olet.")
+        assertParses(range, "[a>Kermit is green<a]")
+    }
+
+    private fun assertParses(parser: Parser<Char, Any>, input: String) {
+        when (val result = run(parser, input)) {
+            is Accept -> {
+            }
+            is Reject -> {
+                fail(stackTrace(result))
+            }
+        }
+    }
+
+    private fun stackTrace(reject: Reject<Char, Any>): String {
+        val rstack = reject.parseError.stack.asReversed()
+        val error = rstack[0]
+        val errorString = StringBuilder()
+        errorString.append("""Parse error: "${error.message}" at ${error.location.position}""").append("\n")
+        if (rstack.size > 1) {
+            for (i in 1..rstack.lastIndex) {
+                errorString.append("""    in scope "${rstack[i].message}" starting at ${rstack[i].location.position}""").append("\n")
+            }
+        }
+        return errorString.toString()
     }
 }
 

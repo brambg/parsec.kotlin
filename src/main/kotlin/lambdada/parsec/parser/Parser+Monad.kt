@@ -8,12 +8,11 @@ import lambdada.parsec.parser.Response.Reject
 // Parser providing pseudo-Monadic ADT
 //
 
-infix fun <I, A, B> Parser<I, A>.map(f: (A) -> B): Parser<I, B> = {
-    this(it).fold({
-        Accept(f(it.value), it.input, it.consumed)
-    }, {
-        Reject(it.parseError, it.consumed)
-    })
+infix fun <I, A, B> Parser<I, A>.map(f: (A) -> B): Parser<I, B> = { reader ->
+    this(reader).fold(
+            { Accept(f(it.value), it.input, it.consumed) },
+            { Reject(it.parseError, it.consumed) }
+    )
 }
 
 fun <I, A> join(p: Parser<I, Parser<I, A>>): Parser<I, A> = {
@@ -36,11 +35,11 @@ infix fun <I, A, B> Parser<I, A>.flatMap(f: (A) -> Parser<I, B>): Parser<I, B> =
 //
 
 infix fun <I, A> Parser<I, A>.satisfy(p: (A) -> Boolean): Parser<I, A> =
-        this flatMap {
-            if (p(it)) {
-                returns<I, A>(it)
+        this flatMap { a ->
+            if (p(a)) {
+                returns<I, A>(a)
             } else {
-                fails()
+                fails("unexpected token '$a'")
             }
         }
 
