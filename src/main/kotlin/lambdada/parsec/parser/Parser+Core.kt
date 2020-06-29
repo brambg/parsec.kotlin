@@ -19,8 +19,8 @@ fun <I, A> fails(): Parser<I, A> = {
 // Element parser
 //
 
-fun <I> any(): Parser<I, I> = {
-    it.read()?.let { Accept(it.first, it.second, true) } ?: Reject(it.location().toError("any"), false)
+fun <I> any(): Parser<I, I> = { reader ->
+    reader.read()?.let { Accept(it.first, it.second, true) } ?: Reject(reader.location().toError("any"), false)
 }
 
 //
@@ -41,7 +41,7 @@ fun <I, A> lazy(f: () -> Parser<I, A>): Parser<I, A> = { f()(it) }
 // Backtracking
 //
 
-fun <I, A> `try`(p: Parser<I, A>): Parser<I, A> = { p(it).fold({ it }, { Reject(it.parseError, false) }) }
+fun <I, A> `try`(p: Parser<I, A>): Parser<I, A> = { reader -> p(reader).fold({ it }, { Reject(it.parseError, false) }) }
 
 //
 // Lookahead / Breaks ll(1) limitation

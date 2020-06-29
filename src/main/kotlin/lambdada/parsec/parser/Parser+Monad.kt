@@ -17,11 +17,9 @@ infix fun <I, A, B> Parser<I, A>.map(f: (A) -> B): Parser<I, B> = {
 }
 
 fun <I, A> join(p: Parser<I, Parser<I, A>>): Parser<I, A> = {
-    val a = p(it)
-    when (a) {
+    when (val a = p(it)) {
         is Accept -> {
-            val b = a.value.invoke(a.input)
-            when (b) {
+            when (val b = a.value.invoke(a.input)) {
                 is Reject -> Reject(b.parseError, b.consumed || a.consumed)
                 is Accept -> Accept(b.value, b.input, b.consumed || a.consumed)
             }

@@ -43,8 +43,7 @@ val <I, A> Parser<I, A>.opt: Parser<I, A?> get() = this map { it as A? } or retu
 // NOTE: Greedy parsers | Prefix i.e. Function vs. Method
 
 tailrec fun <I, A> occurrences(p: Parser<I, A>, acc: List<A>, consumed: Boolean, reader: Reader<I>): Response<I, List<A>> {
-    val a = p(reader)
-    return when (a) {
+    return when (val a = p(reader)) {
         is Reject -> Accept(acc, reader, consumed)
         is Accept -> occurrences(p, acc + a.value, consumed || a.consumed, a.input)
     }
