@@ -18,6 +18,19 @@ fun <I, A> tag(message: String, p: Parser<I, A>): Parser<I, A> =
             p.invoke(reader).mapError { it.tag(message) }
         }
 
+fun <I, A> Response.Reject<I, A>.stackTrace(): String {
+    val errorStack = this.parseError.stack.asReversed()
+    val error = errorStack[0]
+    val errorString = StringBuilder()
+    errorString.append("""Parse error: "${error.message}" at ${error.location.position}""").append("\n")
+    if (errorStack.size > 1) {
+        for (i in 1..errorStack.lastIndex) {
+            errorString.append("""    in scope "${errorStack[i].message}" starting at ${errorStack[i].location.position}""").append("\n")
+        }
+    }
+    return errorString.toString()
+}
+
 private fun <I, A> Response<I, A>.mapError(f: (ParseError) -> ParseError): Response<I, A> =
         this.fold(
                 { this },

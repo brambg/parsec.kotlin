@@ -3,7 +3,9 @@ package lambdada.parsec.parser
 import lambdada.parsec.io.Reader
 import lambdada.parsec.parser.Response.Accept
 import lambdada.parsec.parser.Response.Reject
+import lambdada.parsec.parser.T11_ParseErrors.Token.*
 import org.junit.Test
+import kotlin.test.assertEquals
 import kotlin.test.fail
 
 class T11_ParseErrors {
@@ -76,42 +78,119 @@ class T11_ParseErrors {
         }
     }
 
+    sealed class Token {
+        data class OpenTagToken(val name: String) : Token()
+        data class CloseTagToken(val name: String) : Token()
+        data class TextToken(val content: String) : Token()
+    }
+
     @Test
     fun test_context_sensitive_parsing() {
-        val tagname = scope("tagname", (charIn('a'..'z').optrep))
-        val opentag = scope("openTag", (char('[') then tagname then char('>')))
-        val closetag = scope("closeTag", char('<') then tagname then char(']'))
-        val text = scope("text", not(charIn("[]<>")).optrep)
-        val range = scope("range", opentag then text then closetag)
+        val anyTagName = scope("anyTagName", (charIn("abcdefghijklmnopqrstuvwxyz_").optrep)).mapToString()
+        assertParsesWithResultValue(
+                parser = anyTagName,
+                input = "tag",
+                expectedValue = "tag"
+        )
 
-        assertParses(tagname, "tag")
-        assertParses(opentag, "[tag>")
-        assertParses(closetag, "<tag]")
-        assertParses(text, "Ave! Lorem ipsum dolor pecunia non olet.")
-        assertParses(range, "[a>Kermit is green<a]")
+        val anyOpenTag = scope("anyOpenTag", (char('[') then anyTagName then char('>'))).map { OpenTagToken(it.first.second) }
+        assertParsesWithResultValue(
+                parser = anyOpenTag,
+                input = "[tag>",
+                expectedValue = OpenTagToken("tag")
+        )
+
+        val anyCloseTag = scope("anyCloseTag", char('<') then anyTagName then char(']')).map { CloseTagToken(it.first.second) }
+        assertParsesWithResultValue(
+                parser = anyCloseTag,
+                input = "<tag]",
+                expectedValue = CloseTagToken("tag")
+        )
+
+        val anyText = scope("anyText", not(charIn("[]<>")).optrep).map { TextToken(it.joinToString("")) }
+        assertParsesWithResultValue(
+                parser = anyText,
+                input = "Ave! Lorem ipsum dolor pecunia non olet.",
+                expectedValue = TextToken("Ave! Lorem ipsum dolor pecunia non olet.")
+        )
+
+        val range = scope("anyRange", anyOpenTag then anyText then anyCloseTag).map { it.flattenToList() }
+        assertParsesWithResultValue(
+                parser = range,
+                input = "[a>Kermit is green<not_a]",
+                expectedValue = listOf(OpenTagToken("a"), TextToken("Kermit is green"), CloseTagToken("not_a"))
+        )
+
+        val openThenClose = scope("openThenClose", anyOpenTag flatMap { openTagToken -> closeTagParser(openTagToken.name).map { listOf(openTagToken, it) } })
+        assertParsesWithResultValue(
+                parser = openThenClose,
+                input = "[a><a]",
+                expectedValue = listOf(OpenTagToken("a"), CloseTagToken("a"))
+        )
+        assertParsesWithResultValue(
+                parser = openThenClose,
+                input = "[b><b]",
+                expectedValue = listOf(OpenTagToken("b"), CloseTagToken("b"))
+        )
+//        assertParses(tagml, "[a>[name>Kermit<name] [verb>is<verb] [color>green<color]<a]")
     }
 
-    private fun assertParses(parser: Parser<Char, Any>, input: String) {
+    fun closeTagParser(tagname: String): Parser<Char, CloseTagToken> =
+            { reader ->
+                scope("CloseTag($tagname)",
+                        char('<') then string(tagname) then char(']'))
+                        .map { CloseTagToken(tagname) }
+                        .invoke(reader)
+            }
+
+    @Test
+    fun test_flatten_pair_tree() {
+        val tree = Pair(
+                "eeny",
+                Pair(
+                        "meeny",
+                        Pair(
+                                Pair("moe", "larry"),
+                                "john"
+                        )
+                )
+        )
+        assertEquals(
+                listOf("eeny", "meeny", "moe", "larry", "john"),
+                tree.flattenToList()
+        )
+    }
+
+    private fun Parser<Char, List<Any>>.mapToString(): Parser<Char, String> =
+            this.map { it.joinToString("") }
+
+    private fun assertParsesWithResultValue(parser: Parser<Char, Any>, input: String, expectedValue: Any) {
         when (val result = run(parser, input)) {
             is Accept -> {
+                println("value = ${result.value}")
+                assertEquals(expectedValue, result.value)
             }
             is Reject -> {
-                fail(stackTrace(result))
+                fail(result.stackTrace())
             }
         }
     }
 
-    private fun stackTrace(reject: Reject<Char, Any>): String {
-        val rstack = reject.parseError.stack.asReversed()
-        val error = rstack[0]
-        val errorString = StringBuilder()
-        errorString.append("""Parse error: "${error.message}" at ${error.location.position}""").append("\n")
-        if (rstack.size > 1) {
-            for (i in 1..rstack.lastIndex) {
-                errorString.append("""    in scope "${rstack[i].message}" starting at ${rstack[i].location.position}""").append("\n")
-            }
+    @Suppress("UNCHECKED_CAST")
+    private fun Pair<Any, Any>.flattenToList(): List<Any> {
+        val list = mutableListOf<Any>()
+        if (this.first is Pair<*, *>) {
+            list.addAll((this.first as Pair<Any, Any>).flattenToList())
+        } else {
+            list.add(this.first)
         }
-        return errorString.toString()
+        if (this.second is Pair<*, *>) {
+            list.addAll((this.second as Pair<Any, Any>).flattenToList())
+        } else {
+            list.add(this.second)
+        }
+        return list
     }
+
 }
 
