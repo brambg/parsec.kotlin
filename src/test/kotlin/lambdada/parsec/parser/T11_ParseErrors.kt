@@ -86,42 +86,53 @@ class T11_ParseErrors {
 
     @Test
     fun test_context_sensitive_parsing() {
-        val anyTagName = scope("anyTagName", (charIn("abcdefghijklmnopqrstuvwxyz_").optrep)).mapToString()
+        val anyTagName = scope("anyTagName", (charIn("abcdefghijklmnopqrstuvwxyz_").optrep))
+                .mapToString()
         assertParsesWithResultValue(
                 parser = anyTagName,
                 input = "tag",
                 expectedValue = "tag"
         )
 
-        val anyOpenTag = scope("anyOpenTag", (char('[') then anyTagName then char('>'))).map { OpenTagToken(it.first.second) }
+        val anyOpenTag = scope("anyOpenTag", (char('[') thenRight anyTagName thenLeft char('>')))
+                .map { OpenTagToken(it) }
         assertParsesWithResultValue(
                 parser = anyOpenTag,
                 input = "[tag>",
                 expectedValue = OpenTagToken("tag")
         )
 
-        val anyCloseTag = scope("anyCloseTag", char('<') then anyTagName then char(']')).map { CloseTagToken(it.first.second) }
+        val anyCloseTag = scope("anyCloseTag", char('<') thenRight anyTagName thenLeft char(']'))
+                .map { CloseTagToken(it) }
         assertParsesWithResultValue(
                 parser = anyCloseTag,
                 input = "<tag]",
                 expectedValue = CloseTagToken("tag")
         )
 
-        val anyText = scope("anyText", not(charIn("[]<>")).optrep).map { TextToken(it.joinToString("")) }
+        val anyText = scope("anyText", not(charIn("[]<>")).optrep)
+                .map { TextToken(it.joinToString("")) }
         assertParsesWithResultValue(
                 parser = anyText,
                 input = "Ave! Lorem ipsum dolor pecunia non olet.",
                 expectedValue = TextToken("Ave! Lorem ipsum dolor pecunia non olet.")
         )
 
-        val range = scope("anyRange", anyOpenTag then anyText then anyCloseTag).map { it.flattenToList() }
+        val range = scope("anyRange", anyOpenTag then anyText then anyCloseTag)
+                .map { it.flattenToList() }
         assertParsesWithResultValue(
                 parser = range,
                 input = "[a>Kermit is green<not_a]",
                 expectedValue = listOf(OpenTagToken("a"), TextToken("Kermit is green"), CloseTagToken("not_a"))
         )
 
-        val openThenClose = scope("openThenClose", anyOpenTag flatMap { openTagToken -> closeTagParser(openTagToken.name).map { listOf(openTagToken, it) } })
+        val openThenClose = scope(
+                "openThenClose",
+                anyOpenTag.flatMap { openTagToken ->
+                    closeTagParser(openTagToken.name)
+                            .map { listOf(openTagToken, it) }
+                }
+        )
         assertParsesWithResultValue(
                 parser = openThenClose,
                 input = "[a><a]",
@@ -131,6 +142,28 @@ class T11_ParseErrors {
                 parser = openThenClose,
                 input = "[b><b]",
                 expectedValue = listOf(OpenTagToken("b"), CloseTagToken("b"))
+        )
+        assertParsingFailsWithStackTrace(
+                parser = openThenClose,
+                input = "[tag><not_tag]",
+                expectedStackTrace = """
+                    |Parse error: "unexpected token 'n'" at 7
+                    |    in scope "CloseTag(tag)" starting at 5
+                    |    in scope "openThenClose" starting at 0
+                    |""".trimMargin()
+        )
+
+        val openTextClose = scope(
+                "openTextClose",
+                anyOpenTag.flatMap { openTagToken ->
+                    (anyText then closeTagParser(openTagToken.name))
+                            .map { listOf(openTagToken, it.first, it.second) }
+                }
+        )
+        assertParsesWithResultValue(
+                parser = openTextClose,
+                input = "[a>text<a]",
+                expectedValue = listOf(OpenTagToken("a"), TextToken("text"), CloseTagToken("a"))
         )
 //        assertParses(tagml, "[a>[name>Kermit<name] [verb>is<verb] [color>green<color]<a]")
     }
@@ -172,6 +205,17 @@ class T11_ParseErrors {
             }
             is Reject -> {
                 fail(result.stackTrace())
+            }
+        }
+    }
+
+    private fun assertParsingFailsWithStackTrace(parser: Parser<Char, Any>, input: String, expectedStackTrace: String) {
+        when (val result = run(parser, input)) {
+            is Accept -> {
+                fail("expected parsing to fail, but got $result")
+            }
+            is Reject -> {
+                assertEquals(expectedStackTrace, result.stackTrace())
             }
         }
     }
