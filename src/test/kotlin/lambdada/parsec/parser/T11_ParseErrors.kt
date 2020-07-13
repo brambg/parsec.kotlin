@@ -165,16 +165,104 @@ class T11_ParseErrors {
                 input = "[a>text<a]",
                 expectedValue = listOf(OpenTagToken("a"), TextToken("text"), CloseTagToken("a"))
         )
-//        assertParses(tagml, "[a>[name>Kermit<name] [verb>is<verb] [color>green<color]<a]")
     }
 
-    fun closeTagParser(tagname: String): Parser<Char, CloseTagToken> =
+    @Test
+    fun test_correct_hierarchical_mixed_content() {
+        assertParsesWithResultValue(
+                parser = hierarchicalMixedContent(),
+                input = "[a>[p>Alea [w>acta<w] est<p]<a]",
+                expectedValue = listOf(
+                        OpenTagToken("a"),
+                        OpenTagToken("p"),
+                        TextToken("Alea "),
+                        OpenTagToken("w"),
+                        TextToken("acta"),
+                        CloseTagToken("w"),
+                        TextToken(" est"),
+                        CloseTagToken("p"),
+                        CloseTagToken("a")
+                )
+        )
+    }
+
+    @Test
+    fun test_incorrect_hierarchical_mixed_content() {
+        assertParsingFailsWithStackTrace(
+                parser = hierarchicalMixedContent(),
+                input = "[a>[p>Pecunia [w>non<p] olet<w]<a]",
+                expectedStackTrace = """
+                    |Parse error: "unexpected token '['" at 15
+                    |    in scope "CloseTag(p)" starting at 14
+                    |""".trimMargin()
+        )
+    }
+
+    private fun hierarchicalMixedContent(): Parser<Char, Any> = { reader ->
+        (anyOpenTag.flatMap { openTagToken ->
+            (hierarchicalMixedContent().rep then closeTagParser(openTagToken.name))
+                    .map { listOf(openTagToken, it.first, it.second).flatten() }
+        } or anyText).invoke(reader)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun List<Any>.flatten(): List<Token> {
+        val list: MutableList<Token> = mutableListOf()
+        for (any in this) {
+            when (any) {
+                is List<*> -> list += (any as List<Any>).flatten()
+                is Token -> list += any
+                else -> error("unexpected: $any")
+            }
+        }
+        return list
+    }
+
+    private val anyTagName = scope("anyTagName", (charIn("abcdefghijklmnopqrstuvwxyz_").optrep))
+            .mapToString()
+
+    private val anyOpenTag = scope("anyOpenTag", (char('[') thenRight anyTagName thenLeft char('>')))
+            .map { OpenTagToken(it) }
+
+    private val anyText = scope("anyText", not(charIn("[]<>")).rep)
+            .map { TextToken(it.joinToString("")) }
+
+    private fun closeTagParser(tagname: String): Parser<Char, CloseTagToken> =
             { reader ->
                 scope("CloseTag($tagname)",
                         char('<') then string(tagname) then char(']'))
                         .map { CloseTagToken(tagname) }
                         .invoke(reader)
             }
+
+//    fun csCloseTagParser(context: Context): Parser<Char, CloseTagToken> =
+//            { reader ->
+//                val tagname = context.openTags.last()
+//                scope("CloseTag($tagname)",
+//                        char('<') then string(tagname) then char(']'))
+//                        .map { CloseTagToken(tagname) }
+//                        .invoke(reader)
+//            }
+
+//    class Context {
+//        val openTags: MutableList<String> = mutableListOf()
+//        val tokens: MutableList<Token> = mutableListOf()
+//    }
+
+//    @Test
+//    fun parse_mixed_content_with_context_sensitive_reader() {
+//
+//        val tagml = anyOpenTag.flatMap { context ->
+//            mixedContent(context).flatMap { c2 -> csCloseTagParser(c2) }
+//        }
+//
+//    }
+
+//    private fun mixedContent(context: Context): Parser<Char, Context> =
+//            { reader ->
+//                ((anyTextWithContext(context) or anyOpenTagWithContext(context) or closeTagWithContext(context))).invoke(reader)
+//            }
+//
 
     @Test
     fun test_flatten_pair_tree() {
